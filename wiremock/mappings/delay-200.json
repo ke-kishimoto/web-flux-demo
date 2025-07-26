@@ -1,0 +1,20 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "GET",
+    "urlPath": "/api/delay/demo"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive"
+    },
+    "body": "data: \"こん\"\n\ndata: \"にち\"\n\ndata: \"は、\"\n\ndata: \"WireMock です\"\n\ndata: [DONE]\n\n",
+    "chunkedDribbleDelay": {
+      "numberOfChunks": 5,
+      "totalDuration": 2500
+    }
+  }
+}
