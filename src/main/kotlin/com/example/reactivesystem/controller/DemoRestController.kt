@@ -9,7 +9,6 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.reactive.function.client.WebClient
 import reactor.core.publisher.Flux
 import java.time.Duration
-import java.util.logging.Level
 
 @RestController
 class DemoRestController(private val builder: WebClient.Builder) {
@@ -24,6 +23,11 @@ class DemoRestController(private val builder: WebClient.Builder) {
             .take(5)                    // 5 回だけ
             .map { "$it" }         // 0,1,2,3,4 を文字列化
 
+    @GetMapping("/demo/stream/json", produces = [MediaType.TEXT_EVENT_STREAM_VALUE])
+    fun streamJson(): Flux<Map<String, String>> =
+        Flux.interval(Duration.ofMillis(500))
+            .take(5)                    // 5 回だけ
+            .map { mapOf("id" to "$it", "message" to "Hello, $it!") } // JSON 形式の Map
 
     private val client = builder
         .baseUrl("http://localhost:8081") // 外部 SSE サーバーの URL

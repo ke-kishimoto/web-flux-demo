@@ -2,32 +2,48 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>Fetch Streaming Demo</title>
-
+  <title>Reactive System Demo</title>
+  <style>
+    .btn-area {
+      display: flex;
+      gap: 1rem;
+    }
+  </style>
 </head>
 <body>
 
-<h1>Fetch Streaming Demo</h1>
+<h1>Reactive System Demo</h1>
 
 <div id="app">
   <div id="log">
     <div v-for="(m, i) in messages" :key="i" class="msg">{{ m }}</div>
   </div>
 
-  <button
-    :class="{ loading }"
-    :disabled="loading"
-    @click="callStream('/demo/stream')"
-  >
-    {{ loading ? '受信中…' : '/demo/stream を呼ぶ' }}
-  </button>
-  <button
-    :class="{ loading }"
-    :disabled="loading"
-    @click="callStream('/demo/delay')"
-  >
-    {{ loading ? '受信中…' : '/demo/delay を呼ぶ' }}
-  </button>
+  <div class="btn-area">
+    <button
+      :class="{ loading }"
+      :disabled="loading"
+      @click="callStream('/demo/stream')"
+    >
+      {{ loading ? '受信中…' : '/demo/stream を呼ぶ' }}
+    </button>
+  
+    <button
+      :class="{ loading }"
+      :disabled="loading"
+      @click="callStream('/demo/stream/json')"
+    >
+      {{ loading ? '受信中…' : '/demo/stream/json を呼ぶ' }}
+    </button>
+  
+    <button
+      :class="{ loading }"
+      :disabled="loading"
+      @click="callStream('/demo/delay')"
+    >
+      {{ loading ? '受信中…' : '/demo/delay を呼ぶ' }}
+    </button>
+  </div>
 </div>
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
