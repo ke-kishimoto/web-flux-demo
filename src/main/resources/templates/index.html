@@ -21,28 +21,17 @@
 
   <div class="btn-area">
     <button
-      :class="{ loading }"
-      :disabled="loading"
-      @click="callStream('/demo/stream')"
+    @click="callNonReactive"
     >
-      {{ loading ? '受信中…' : '/demo/stream を呼ぶ' }}
+      Non Reactive
     </button>
-  
+    
     <button
-      :class="{ loading }"
-      :disabled="loading"
-      @click="callStream('/demo/stream/json')"
+      @click="callStream('/demo/reactive-1')"
     >
-      {{ loading ? '受信中…' : '/demo/stream/json を呼ぶ' }}
+      Reactive
     </button>
-  
-    <button
-      :class="{ loading }"
-      :disabled="loading"
-      @click="callStream('/demo/delay')"
-    >
-      {{ loading ? '受信中…' : '/demo/delay を呼ぶ' }}
-    </button>
+
   </div>
 </div>
 
@@ -53,7 +42,18 @@ const { createApp, ref } = Vue;
 createApp({
   setup() {
     const messages = ref([]);
-    const loading  = ref(false);
+
+    // --- 非リアクティブな呼び出し ------------------
+    async function callNonReactive() {
+      try {
+        const response = await fetch('/demo/non-reactive');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const text = await response.text();
+        messages.value.push(text);
+      } catch (err) {
+        messages.value.push(`エラー: ${err.message || err}`);
+      }
+    }
 
     // --- SSE フレームを手動でパースするユーティリティ ------------------
     function* parseSSE(chunkText, buffer) {
@@ -75,8 +75,6 @@ createApp({
     // ---------------------------------------------------------------
 
     async function callStream(path) {
-      // messages.value.length = 0; // クリア
-      loading.value = true;
       let responseText = '';
       messages.value.push(responseText);
       const index = messages.value.length - 1;
@@ -108,12 +106,14 @@ createApp({
         }
       } catch (err) {
         messages.value.push(`エラー: ${err.message || err}`);
-      } finally {
-        loading.value = false;
-      }
+      } 
     }
 
-    return { messages, loading, callStream };
+    return { 
+      messages, 
+      callNonReactive,
+      callStream 
+    };
   }
 }).mount('#app');
 </script>
