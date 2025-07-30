@@ -1,0 +1,20 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "GET",
+    "urlPath": "/api/sse/demo"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive"
+    },
+    "body": "data: H\n\ndata: e\n\ndata: l\n\ndata: l\n\ndata: o\n\ndata: !\n\ndata:  \n\ndata: T\n\ndata: h\n\ndata: i\n\ndata: s\n\ndata:  \n\ndata: i\n\ndata: s\n\ndata:  \n\ndata: a\n\ndata:  \n\ndata: S\n\ndata: e\n\ndata: r\n\ndata: v\n\ndata: e\n\ndata: r\n\ndata: -\n\ndata: s\n\ndata: e\n\ndata: n\n\ndata: t\n\ndata:  \n\ndata: E\n\ndata: v\n\ndata: e\n\ndata: n\n\ndata: t\n\ndata: s\n\ndata:  \n\ndata: e\n\ndata: x\n\ndata: a\n\ndata: m\n\ndata: p\n\ndata: l\n\ndata: e\n\ndata: .\n\n",
+    "chunkedDribbleDelay": {
+      "numberOfChunks": 44,
+      "totalDuration": 2200
+    }
+  }
+}
