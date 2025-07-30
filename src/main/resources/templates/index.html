@@ -3,120 +3,76 @@
 <head>
   <meta charset="UTF-8" />
   <title>Reactive System Demo</title>
-  <style>
-    .btn-area {
-      display: flex;
-      gap: 1rem;
-    }
-  </style>
 </head>
 <body>
-
-<h1>Reactive System Demo</h1>
-
-<div id="app">
-  <div id="log">
-    <div v-for="(m, i) in messages" :key="i" class="msg">{{ m }}</div>
+  <div id="app">
+    <h1>SSE Demo</h1>
+    <div class="btn-area">
+      <button @click="callStream">
+        click
+      </button>
+    </div>
+    <div id="log">
+      <div>{{ message }}</div>
+    </div>
   </div>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script>
+    const { createApp, ref } = Vue;
+    createApp({
+      setup() {
+        const message = ref('');
 
-  <div class="btn-area">
-    <button
-    @click="callNonReactive"
-    >
-      Non Reactive
-    </button>
-    
-    <button
-      @click="callStream('/demo/reactive-1')"
-    >
-      Reactive
-    </button>
+        function* parseSSE(chunkText, buffer) {
+          buffer.push(chunkText);
+          const joined = buffer.join('');
+          const events = joined.split(/\r?\n\r?\n/);
+          buffer.length = 0;
 
-  </div>
-</div>
+          const last = events.pop();
+          if (last !== undefined) buffer.push(last);
 
-<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-<script>
-const { createApp, ref } = Vue;
-
-createApp({
-  setup() {
-    const messages = ref([]);
-
-    // --- 非リアクティブな呼び出し ------------------
-    async function callNonReactive() {
-      try {
-        const response = await fetch('/demo/non-reactive');
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const text = await response.text();
-        messages.value.push(text);
-      } catch (err) {
-        messages.value.push(`エラー: ${err.message || err}`);
-      }
-    }
-
-    // --- SSE フレームを手動でパースするユーティリティ ------------------
-    function* parseSSE(chunkText, buffer) {
-      buffer.push(chunkText);
-      const joined = buffer.join('');
-      const events = joined.split(/\r?\n\r?\n/);
-      buffer.length = 0;
-
-      const last = events.pop();
-      if (last !== undefined) buffer.push(last);
-
-      for (const ev of events) {
-        for (const line of ev.split(/\r?\n/)) {
-          const m = line.match(/^data:\s?(.*)$/);
-          if (m) yield m[1];
-        }
-      }
-    }
-    // ---------------------------------------------------------------
-
-    async function callStream(path) {
-      let responseText = '';
-      messages.value.push(responseText);
-      const index = messages.value.length - 1;
-
-      try {
-        const response = await fetch(path, {
-          headers: { 'Accept': 'text/event-stream' }
-        });
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const reader      = response.body.getReader();
-        const decoder     = new TextDecoder('utf-8');
-        const leftoverBuf = [];
-
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          const chunkText = decoder.decode(value, { stream: true });
-
-          for (const msg of parseSSE(chunkText, leftoverBuf)) {
-            messages.value[index] += msg;
-            // 自動スクロール
-            requestAnimationFrame(() => {
-              const logBox = document.getElementById('log');
-              logBox.scrollTop = logBox.scrollHeight;
-            });
+          for (const ev of events) {
+            for (const line of ev.split(/\r?\n/)) {
+              if (line.startsWith("data:")) {
+                yield line.slice(5);
+              }
+            }
           }
         }
-      } catch (err) {
-        messages.value.push(`エラー: ${err.message || err}`);
-      } 
-    }
 
-    return { 
-      messages, 
-      callNonReactive,
-      callStream 
-    };
-  }
-}).mount('#app');
-</script>
+        async function callStream() {
+          message.value = '';
 
+          try {
+            const response = await fetch('/demo/sse', {
+              headers: { 'Accept': 'text/event-stream' }
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            const leftoverBuf = [];
+
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              const chunkText = decoder.decode(value, { stream: true });
+
+              for (const msg of parseSSE(chunkText, leftoverBuf)) {
+                message.value += msg;
+              }
+            }
+          } catch (err) {
+            message.value = `エラー: ${err.message || err}`;
+          }
+        }
+
+        return {
+          message,
+          callStream
+        };
+      }
+    }).mount('#app');
+  </script>
 </body>
 </html>

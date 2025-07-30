@@ -8,13 +8,12 @@ import java.time.Duration
 @RestController
 class ReactiveRestController {
 
-    @GetMapping("/demo/reactive-1")
+    @GetMapping("/demo/sse")
     fun reactiveEndpoint1(): Flux<String> {
-        // 非同期処理の例
-        val message = "Hello"
-        val res = Flux.interval(Duration.ofMillis(500))
-            .take(5)                    // 5 回だけ
-            .map { it -> message[it.toInt()].toString() }
+        val message = "Hello! This is a Server-sent Events example."
+        val res = Flux.interval(Duration.ofMillis(50)) // 50ミリ秒ごとに発行
+            .take(message.length.toLong()) // メッセージの長さ分
+            .map { it -> message[it.toInt()].toString() } // 各文字を1つずつ
         return res
     }
 }
