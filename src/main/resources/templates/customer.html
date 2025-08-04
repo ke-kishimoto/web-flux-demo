@@ -7,15 +7,30 @@
 </head>
 <body>
   <div id="app">
-    <h1>SSE Demo</h1>
+    <h1>SSE Demo - Reactive vs Blocking Comparison</h1>
     <div class="btn-area">
-      <button @click="getCustomers">
-        customers
+      <button @click="getCustomersReactive" :disabled="loading">
+        Reactive (Non-blocking) SSE
+      </button>
+      <button @click="getCustomersBlocking" :disabled="loading">
+        Blocking (JPA) SSE
+      </button>
+      <button @click="getCustomersReactiveBulk" :disabled="loading">
+        Reactive SSE (No Delay)
+      </button>
+      <button @click="getCustomersBlockingBulk" :disabled="loading">
+        Blocking Bulk JSON
+      </button>
+      <button @click="clearCustomers">
+        Clear
       </button>
     </div>
     <div id="log">
       <div>
+        <p>処理方式：{{ processingType }}</p>
         <p>件数：{{ customers.length }}</p>
+        <p>処理時間：{{ processingTime }}ms</p>
+        <p v-if="loading">読み込み中...</p>
         <table>
           <thead>
             <tr>
@@ -42,11 +57,15 @@ const { createApp, ref } = Vue;
     createApp({
       setup() {
         const customers = ref([]);
+        const loading = ref(false);
+        const processingType = ref('');
+        const processingTime = ref(0);
+        let startTime = 0;
 
-        function parseJSON(text) {
-          // 空文字列や空白のみの場合はnullを返す
+        function* parseJSON(text) {
+          // 空文字列や空白のみの場合は何も yield しない
           if (!text || text.trim() === '') {
-            return null;
+            return;
           }
           
           // data:プレフィックスを削除
@@ -54,55 +73,128 @@ const { createApp, ref } = Vue;
             text = text.slice(5); // "data:"を削除
           }
           
-          // 再度トリムして空の場合はnullを返す
+          // 再度トリムして空の場合は何も yield しない
           text = text.trim();
           if (text === '') {
-            return null;
+            return;
           }
           
           try {
             const json = JSON.parse(text);
-            return json;
+            yield json; // 成功した場合のみ yield
           } catch (e) {
             console.error('JSON parse error:', e, 'Text:', text);
-            return null; // エラー時はnullを返す
+            // エラー時は何も yield しない（スキップ）
           }
         }
 
-        async function getCustomers() {
-          const response = await fetch('/customers', {
-            headers: { 'Accept': 'text/event-stream' }
-          });
-          if (!response.ok) throw new Error('Network response was not ok');
+        async function getCustomersReactive() {
+          await processCustomers('/customers', 'Reactive (R2DBC)');
+        }
 
-          console.log('Response status:', response.status);
+        async function getCustomersBlocking() {
+          await processCustomers('/customers/blocking', 'Blocking (JPA) SSE');
+        }
 
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder('utf-8');
-          let buffer = '';
+        async function getCustomersReactiveBulk() {
+          await processCustomers('/customers/reactive/bulk', 'Reactive SSE (No Delay)');
+        }
 
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+        async function getCustomersBlockingBulk() {
+          await processCustomersBulk('/customers/blocking/bulk', 'Blocking Bulk JSON');
+        }
 
-            buffer += decoder.decode(value, { stream: true });
-            const parts = buffer.split('\n');
-            buffer = parts.pop(); // 残りをバッファへ
+        async function processCustomersBulk(endpoint, type) {
+          if (loading.value) return;
+          
+          loading.value = true;
+          customers.value = [];
+          processingType.value = type;
+          startTime = Date.now();
+          processingTime.value = 0;
 
-            for (const part of parts) {
-              console.log('Received part:', part);
-              const parsedData = parseJSON(part);
-              if (parsedData !== null) {
-                customers.value.push(parsedData);
+          try {
+            const response = await fetch(endpoint, {
+              headers: { 'Accept': 'application/json' }
+            });
+            if (!response.ok) throw new Error('Network response was not ok');
+
+            console.log('Response status:', response.status);
+            const data = await response.json();
+            
+            // 一括でデータを設定
+            customers.value = data;
+            processingTime.value = Date.now() - startTime;
+          } catch (error) {
+            console.error('Error:', error);
+            processingType.value = `Error: ${error.message}`;
+          } finally {
+            loading.value = false;
+          }
+        }
+
+        async function processCustomers(endpoint, type) {
+          if (loading.value) return;
+          
+          loading.value = true;
+          customers.value = [];
+          processingType.value = type;
+          startTime = Date.now();
+          processingTime.value = 0;
+
+          try {
+            const response = await fetch(endpoint, {
+              headers: { 'Accept': 'text/event-stream' }
+            });
+            if (!response.ok) throw new Error('Network response was not ok');
+
+            console.log('Response status:', response.status);
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+              const parts = buffer.split('\n');
+              buffer = parts.pop(); // 残りをバッファへ
+
+              for (const part of parts) {
+                console.log('Received part:', part);
+                // ジェネレータ関数から値を取得
+                for (const parsedData of parseJSON(part)) {
+                  customers.value.push(parsedData);
+                }
               }
             }
+            processingTime.value = Date.now() - startTime;
+          } catch (error) {
+            console.error('Error:', error);
+            processingType.value = `Error: ${error.message}`;
+          } finally {
+            loading.value = false;
           }
         }
 
+        function clearCustomers() {
+          customers.value = [];
+          processingType.value = '';
+          processingTime.value = 0;
+        }
 
         return {
           customers,
-          getCustomers
+          loading,
+          processingType,
+          processingTime,
+          getCustomersReactive,
+          getCustomersBlocking,
+          getCustomersReactiveBulk,
+          getCustomersBlockingBulk,
+          clearCustomers
         };
       }
     }).mount('#app');
