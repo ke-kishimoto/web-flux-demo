@@ -13,32 +13,9 @@
       <button @click="callStream">
         click
       </button>
-
-      <button @click="getCustomers">
-        customers
-      </button>
     </div>
     <div id="log">
       <div>{{ message }}</div>
-      <div>
-        <p>件数：{{ customers.length }}</p>
-        <table>
-          <thead>
-            <tr>
-              <th>id</th>
-              <th>name</th>
-              <th>json</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="customer in customers" :key="customer.id">
-              <td>{{ customer.id }}</td>
-              <td>{{ customer.name }}</td>
-              <td>{{ customer }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
     </div>
   </div>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
@@ -62,62 +39,6 @@
             for (const line of ev.split(/\r?\n/)) {
               if (line.startsWith("data:")) {
                 yield line.slice(5);
-              }
-            }
-          }
-        }
-
-        function parseJSON(text) {
-          // 空文字列や空白のみの場合はnullを返す
-          if (!text || text.trim() === '') {
-            return null;
-          }
-          
-          // data:プレフィックスを削除
-          if(text.startsWith('data:')) {
-            text = text.slice(5); // "data:"を削除
-          }
-          
-          // 再度トリムして空の場合はnullを返す
-          text = text.trim();
-          if (text === '') {
-            return null;
-          }
-          
-          try {
-            const json = JSON.parse(text);
-            return json;
-          } catch (e) {
-            console.error('JSON parse error:', e, 'Text:', text);
-            return null; // エラー時はnullを返す
-          }
-        }
-
-        async function getCustomers() {
-          const response = await fetch('/customers', {
-            headers: { 'Accept': 'text/event-stream' }
-          });
-          if (!response.ok) throw new Error('Network response was not ok');
-
-          console.log('Response status:', response.status);
-
-          const reader = response.body.getReader();
-          const decoder = new TextDecoder('utf-8');
-          let buffer = '';
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const parts = buffer.split('\n');
-            buffer = parts.pop(); // 残りをバッファへ
-
-            for (const part of parts) {
-              console.log('Received part:', part);
-              const parsedData = parseJSON(part);
-              if (parsedData !== null) {
-                customers.value.push(parsedData);
               }
             }
           }
