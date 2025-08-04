@@ -23,6 +23,25 @@
       </button>
     </div>
     
+    <div class="control-panel" style="margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f0f8ff;">
+      <h3 style="margin-top: 0;">パフォーマンス設定</h3>
+      <label style="margin-right: 20px;">
+        <input type="checkbox" v-model="virtualScrollConfig.enabled"> 
+        仮想スクロールを有効にする
+      </label>
+      <label style="margin-right: 20px;">
+        表示領域の高さ: 
+        <input type="number" v-model.number="virtualScrollConfig.containerHeight" min="200" max="800" style="width: 80px;">px
+      </label>
+      <label style="margin-right: 20px;">
+        最大表示件数: 
+        <input type="number" v-model.number="displayConfig.maxItems" min="100" max="20000" step="100" style="width: 80px;">
+      </label>
+      <small style="display: block; margin-top: 5px; color: #666;">
+        ※ 仮想スクロール有効時は、画面に見える部分のみレンダリングされます
+      </small>
+    </div>
+    
     <div class="control-panel" style="margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
       <h3 style="margin-top: 0;">表示制御設定</h3>
       <label style="margin-right: 20px;">
@@ -37,8 +56,13 @@
         表示間隔(ms): 
         <input type="number" v-model.number="displayConfig.intervalMs" min="50" max="2000" step="50" style="width: 80px;">
       </label>
+      <label style="margin-right: 20px;">
+        最大受信件数: 
+        <input type="number" v-model.number="displayConfig.maxItems" min="100" max="20000" step="100" style="width: 80px;">
+      </label>
       <small style="display: block; margin-top: 5px; color: #666;">
-        ※ バッファリング無効時は、データを受信次第即座に表示されます
+        ※ バッファリング無効時は、データを受信次第即座に表示されます<br>
+        ※ 最大受信件数に達すると自動的にデータ受信を停止します
       </small>
     </div>
     
@@ -46,21 +70,54 @@
       <div>
         <p>処理方式：{{ processingType }}</p>
         <p>件数：{{ customers.length }}</p>
+        <p v-if="virtualScrollConfig.enabled">表示中：{{ visibleRange.start }}〜{{ visibleRange.end }}行目</p>
         <p>処理時間：{{ processingTime }}ms</p>
         <p v-if="loading">読み込み中...</p>
-        <table>
+        
+        <!-- 仮想スクロール対応テーブル -->
+        <div v-if="virtualScrollConfig.enabled" 
+             :style="{ height: virtualScrollConfig.containerHeight + 'px', overflow: 'auto', border: '1px solid #ddd' }"
+             @scroll="handleScroll">
+          <div :style="{ height: (customers.length * virtualScrollConfig.itemHeight) + 'px', position: 'relative' }">
+            <table style="position: absolute; top: 0; width: 100%; border-collapse: collapse;">
+              <thead style="position: sticky; top: 0; background: white; z-index: 1;">
+                <tr>
+                  <th style="border: 1px solid #ddd; padding: 8px;">id</th>
+                  <th style="border: 1px solid #ddd; padding: 8px;">name</th>
+                  <th style="border: 1px solid #ddd; padding: 8px;">追加時刻</th>
+                </tr>
+              </thead>
+            </table>
+            <div :style="{ transform: `translateY(${visibleRange.start * virtualScrollConfig.itemHeight + 40}px)` }">
+              <table style="width: 100%; border-collapse: collapse;">
+                <tbody>
+                  <tr v-for="customer in visibleCustomers" 
+                      :key="customer.id"
+                      :style="{ height: virtualScrollConfig.itemHeight + 'px' }">
+                    <td style="border: 1px solid #ddd; padding: 8px;">{{ customer.id }}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">{{ customer.name }}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px;">{{ customer.addedAt }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 通常表示（仮想スクロール無効時） -->
+        <table v-else style="border-collapse: collapse; width: 100%;">
           <thead>
             <tr>
-              <th>id</th>
-              <th>name</th>
-              <th>追加時刻</th>
+              <th style="border: 1px solid #ddd; padding: 8px; background-color: #f2f2f2;">id</th>
+              <th style="border: 1px solid #ddd; padding: 8px; background-color: #f2f2f2;">name</th>
+              <th style="border: 1px solid #ddd; padding: 8px; background-color: #f2f2f2;">追加時刻</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="customer in customers" :key="customer.id">
-              <td>{{ customer.id }}</td>
-              <td>{{ customer.name }}</td>
-              <td>{{ customer.addedAt }}</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">{{ customer.id }}</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">{{ customer.name }}</td>
+              <td style="border: 1px solid #ddd; padding: 8px;">{{ customer.addedAt }}</td>
             </tr>
           </tbody>
         </table>
@@ -70,7 +127,7 @@
   </div>
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <script>
-const { createApp, ref } = Vue;
+const { createApp, ref, computed } = Vue;
     createApp({
       setup() {
         const customers = ref([]);
@@ -80,12 +137,54 @@ const { createApp, ref } = Vue;
         let startTime = 0;
         let currentController = null; // AbortController用
         
+        // 仮想スクロール用の設定
+        const virtualScrollConfig = ref({
+          enabled: true,
+          itemHeight: 40,       // 1行の高さ（px）
+          containerHeight: 400, // テーブル表示領域の高さ（px）
+          bufferSize: 10        // 画面外でも保持する行数
+        });
+        
+        const scrollTop = ref(0);
+        
         // 表示制御設定
         const displayConfig = ref({
           enabled: true,        // バッファリングを有効にするか
           batchSize: 10,        // 一度に表示する件数
-          intervalMs: 100       // 表示間隔（ミリ秒）
+          intervalMs: 100,      // 表示間隔（ミリ秒）
+          maxItems: 5000        // 最大受信件数
         });
+
+        // 表示する行の範囲を計算
+        const visibleRange = computed(() => {
+          if (!virtualScrollConfig.value.enabled) {
+            return { start: 0, end: customers.value.length };
+          }
+          
+          const itemHeight = virtualScrollConfig.value.itemHeight;
+          const containerHeight = virtualScrollConfig.value.containerHeight;
+          const bufferSize = virtualScrollConfig.value.bufferSize;
+          
+          const start = Math.max(0, Math.floor(scrollTop.value / itemHeight) - bufferSize);
+          const visibleCount = Math.ceil(containerHeight / itemHeight);
+          const end = Math.min(customers.value.length, start + visibleCount + bufferSize * 2);
+          
+          return { start, end };
+        });
+        
+        // 実際に表示する行
+        const visibleCustomers = computed(() => {
+          const { start, end } = visibleRange.value;
+          return customers.value.slice(start, end).map((customer, index) => ({
+            ...customer,
+            originalIndex: start + index
+          }));
+        });
+        
+        // スクロールイベントハンドラ
+        function handleScroll(event) {
+          scrollTop.value = event.target.scrollTop;
+        }
 
         function* parseJSON(text) {
           // 空文字列や空白のみの場合は何も yield しない
@@ -228,6 +327,13 @@ const { createApp, ref } = Vue;
                 console.log('Received part:', part);
                 // ジェネレータ関数から値を取得
                 for (const parsedData of parseJSON(part)) {
+                  // 最大件数チェック
+                  if (customers.value.length + dataBuffer.length >= displayConfig.value.maxItems) {
+                    console.log(`最大件数(${displayConfig.value.maxItems})に達したため、データ受信を停止します`);
+                    reader.cancel();
+                    break;
+                  }
+                  
                   const customerWithTime = {
                     ...parsedData,
                     addedAt: new Date().toLocaleTimeString()
@@ -240,6 +346,11 @@ const { createApp, ref } = Vue;
                     // 即座に表示
                     customers.value.push(customerWithTime);
                   }
+                }
+                
+                // 最大件数チェック後にループを抜ける
+                if (customers.value.length + dataBuffer.length >= displayConfig.value.maxItems) {
+                  break;
                 }
               }
             }
@@ -304,6 +415,10 @@ const { createApp, ref } = Vue;
           processingType,
           processingTime,
           displayConfig,
+          virtualScrollConfig,
+          visibleCustomers,
+          visibleRange,
+          handleScroll,
           getCustomersReactiveBulk,
           getCustomersBlockingBulk,
           clearCustomers,
