@@ -33,14 +33,12 @@
             <tr>
               <th>id</th>
               <th>name</th>
-              <th>json</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="customer in customers" :key="customer.id">
               <td>{{ customer.id }}</td>
               <td>{{ customer.name }}</td>
-              <td>{{ customer }}</td>
             </tr>
           </tbody>
         </table>
