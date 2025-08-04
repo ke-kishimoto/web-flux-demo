@@ -9,12 +9,6 @@
   <div id="app">
     <h1>SSE Demo - Reactive vs Blocking Comparison</h1>
     <div class="btn-area">
-      <button @click="getCustomersReactive" :disabled="loading">
-        Reactive (Non-blocking) SSE
-      </button>
-      <button @click="getCustomersBlocking" :disabled="loading">
-        Blocking (JPA) SSE
-      </button>
       <button @click="getCustomersReactiveBulk" :disabled="loading">
         Reactive SSE (No Delay)
       </button>
@@ -23,6 +17,9 @@
       </button>
       <button @click="clearCustomers">
         Clear
+      </button>
+      <button @click="cancelProcessing" :disabled="!loading" style="background-color: #ff6b6b; color: white;">
+        キャンセル
       </button>
     </div>
     <div id="log">
@@ -61,6 +58,7 @@ const { createApp, ref } = Vue;
         const processingType = ref('');
         const processingTime = ref(0);
         let startTime = 0;
+        let currentController = null; // AbortController用
 
         function* parseJSON(text) {
           // 空文字列や空白のみの場合は何も yield しない
@@ -88,14 +86,6 @@ const { createApp, ref } = Vue;
           }
         }
 
-        async function getCustomersReactive() {
-          await processCustomers('/customers', 'Reactive (R2DBC)');
-        }
-
-        async function getCustomersBlocking() {
-          await processCustomers('/customers/blocking', 'Blocking (JPA) SSE');
-        }
-
         async function getCustomersReactiveBulk() {
           await processCustomers('/customers/reactive/bulk', 'Reactive SSE (No Delay)');
         }
@@ -107,6 +97,12 @@ const { createApp, ref } = Vue;
         async function processCustomersBulk(endpoint, type) {
           if (loading.value) return;
           
+          // 前回の処理をキャンセル
+          if (currentController) {
+            currentController.abort();
+          }
+          
+          currentController = new AbortController();
           loading.value = true;
           customers.value = [];
           processingType.value = type;
@@ -115,7 +111,8 @@ const { createApp, ref } = Vue;
 
           try {
             const response = await fetch(endpoint, {
-              headers: { 'Accept': 'application/json' }
+              headers: { 'Accept': 'application/json' },
+              signal: currentController.signal // キャンセル用シグナル
             });
             if (!response.ok) throw new Error('Network response was not ok');
 
@@ -126,16 +123,28 @@ const { createApp, ref } = Vue;
             customers.value = data;
             processingTime.value = Date.now() - startTime;
           } catch (error) {
-            console.error('Error:', error);
-            processingType.value = `Error: ${error.message}`;
+            if (error.name === 'AbortError') {
+              console.log('処理がキャンセルされました');
+              processingType.value = `${type} - キャンセルされました`;
+            } else {
+              console.error('Error:', error);
+              processingType.value = `Error: ${error.message}`;
+            }
           } finally {
             loading.value = false;
+            currentController = null;
           }
         }
 
         async function processCustomers(endpoint, type) {
           if (loading.value) return;
           
+          // 前回の処理をキャンセル
+          if (currentController) {
+            currentController.abort();
+          }
+          
+          currentController = new AbortController();
           loading.value = true;
           customers.value = [];
           processingType.value = type;
@@ -144,7 +153,8 @@ const { createApp, ref } = Vue;
 
           try {
             const response = await fetch(endpoint, {
-              headers: { 'Accept': 'text/event-stream' }
+              headers: { 'Accept': 'text/event-stream' },
+              signal: currentController.signal // キャンセル用シグナル
             });
             if (!response.ok) throw new Error('Network response was not ok');
 
@@ -155,6 +165,12 @@ const { createApp, ref } = Vue;
             let buffer = '';
 
             while (true) {
+              // キャンセルされていないかチェック
+              if (currentController.signal.aborted) {
+                reader.cancel();
+                break;
+              }
+
               const { done, value } = await reader.read();
               if (done) break;
 
@@ -172,10 +188,16 @@ const { createApp, ref } = Vue;
             }
             processingTime.value = Date.now() - startTime;
           } catch (error) {
-            console.error('Error:', error);
-            processingType.value = `Error: ${error.message}`;
+            if (error.name === 'AbortError') {
+              console.log('処理がキャンセルされました');
+              processingType.value = `${type} - キャンセルされました`;
+            } else {
+              console.error('Error:', error);
+              processingType.value = `Error: ${error.message}`;
+            }
           } finally {
             loading.value = false;
+            currentController = null;
           }
         }
 
@@ -185,16 +207,22 @@ const { createApp, ref } = Vue;
           processingTime.value = 0;
         }
 
+        // キャンセル関数を追加
+        function cancelProcessing() {
+          if (currentController) {
+            currentController.abort();
+          }
+        }
+
         return {
           customers,
           loading,
           processingType,
           processingTime,
-          getCustomersReactive,
-          getCustomersBlocking,
           getCustomersReactiveBulk,
           getCustomersBlockingBulk,
-          clearCustomers
+          clearCustomers,
+          cancelProcessing // 新しく追加
         };
       }
     }).mount('#app');
