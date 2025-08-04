@@ -22,6 +22,26 @@
         キャンセル
       </button>
     </div>
+    
+    <div class="control-panel" style="margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background-color: #f9f9f9;">
+      <h3 style="margin-top: 0;">表示制御設定</h3>
+      <label style="margin-right: 20px;">
+        <input type="checkbox" v-model="displayConfig.enabled"> 
+        バッファリング表示を有効にする
+      </label>
+      <label style="margin-right: 20px;">
+        一度に表示する件数: 
+        <input type="number" v-model.number="displayConfig.batchSize" min="1" max="100" style="width: 60px;">
+      </label>
+      <label style="margin-right: 20px;">
+        表示間隔(ms): 
+        <input type="number" v-model.number="displayConfig.intervalMs" min="50" max="2000" step="50" style="width: 80px;">
+      </label>
+      <small style="display: block; margin-top: 5px; color: #666;">
+        ※ バッファリング無効時は、データを受信次第即座に表示されます
+      </small>
+    </div>
+    
     <div id="log">
       <div>
         <p>処理方式：{{ processingType }}</p>
@@ -33,12 +53,14 @@
             <tr>
               <th>id</th>
               <th>name</th>
+              <th>追加時刻</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="customer in customers" :key="customer.id">
               <td>{{ customer.id }}</td>
               <td>{{ customer.name }}</td>
+              <td>{{ customer.addedAt }}</td>
             </tr>
           </tbody>
         </table>
@@ -57,6 +79,13 @@ const { createApp, ref } = Vue;
         const processingTime = ref(0);
         let startTime = 0;
         let currentController = null; // AbortController用
+        
+        // 表示制御設定
+        const displayConfig = ref({
+          enabled: true,        // バッファリングを有効にするか
+          batchSize: 10,        // 一度に表示する件数
+          intervalMs: 100       // 表示間隔（ミリ秒）
+        });
 
         function* parseJSON(text) {
           // 空文字列や空白のみの場合は何も yield しない
@@ -149,6 +178,21 @@ const { createApp, ref } = Vue;
           startTime = Date.now();
           processingTime.value = 0;
 
+          // バッファリング用の変数
+          let dataBuffer = [];
+          let displayTimer = null;
+
+          // バッファリングが有効な場合、定期的に表示するタイマーを開始
+          if (displayConfig.value.enabled) {
+            displayTimer = setInterval(() => {
+              if (dataBuffer.length > 0) {
+                const itemsToShow = dataBuffer.splice(0, displayConfig.value.batchSize);
+                customers.value.push(...itemsToShow);
+                console.log(`バッファから${itemsToShow.length}件表示（残り${dataBuffer.length}件）`);
+              }
+            }, displayConfig.value.intervalMs);
+          }
+
           try {
             const response = await fetch(endpoint, {
               headers: { 'Accept': 'text/event-stream' },
@@ -166,11 +210,15 @@ const { createApp, ref } = Vue;
               // キャンセルされていないかチェック
               if (currentController.signal.aborted) {
                 reader.cancel();
+                if (displayTimer) clearInterval(displayTimer);
                 break;
               }
 
               const { done, value } = await reader.read();
-              if (done) break;
+              if (done) {
+                console.log('ストリーム完了。バッファリング表示を継続します。');
+                break;
+              }
 
               buffer += decoder.decode(value, { stream: true });
               const parts = buffer.split('\n');
@@ -180,12 +228,49 @@ const { createApp, ref } = Vue;
                 console.log('Received part:', part);
                 // ジェネレータ関数から値を取得
                 for (const parsedData of parseJSON(part)) {
-                  customers.value.push(parsedData);
+                  const customerWithTime = {
+                    ...parsedData,
+                    addedAt: new Date().toLocaleTimeString()
+                  };
+
+                  if (displayConfig.value.enabled) {
+                    // バッファに追加（画面には即座に表示しない）
+                    dataBuffer.push(customerWithTime);
+                  } else {
+                    // 即座に表示
+                    customers.value.push(customerWithTime);
+                  }
                 }
               }
             }
+            
+            // ストリーム完了後、バッファに残っているデータを設定間隔で表示
+            if (displayConfig.value.enabled && dataBuffer.length > 0) {
+              console.log(`ストリーム完了後、残り${dataBuffer.length}件をバッファリング表示します`);
+              
+              // 既存のタイマーを一旦停止
+              if (displayTimer) {
+                clearInterval(displayTimer);
+              }
+              
+              // 残りデータ用の新しいタイマーを開始
+              displayTimer = setInterval(() => {
+                if (dataBuffer.length > 0) {
+                  const itemsToShow = dataBuffer.splice(0, displayConfig.value.batchSize);
+                  customers.value.push(...itemsToShow);
+                  console.log(`残りバッファから${itemsToShow.length}件表示（残り${dataBuffer.length}件）`);
+                } else {
+                  // バッファが空になったらタイマーを停止
+                  clearInterval(displayTimer);
+                  displayTimer = null;
+                  console.log('全てのデータ表示が完了しました');
+                }
+              }, displayConfig.value.intervalMs);
+            }
+            
             processingTime.value = Date.now() - startTime;
           } catch (error) {
+            if (displayTimer) clearInterval(displayTimer);
             if (error.name === 'AbortError') {
               console.log('処理がキャンセルされました');
               processingType.value = `${type} - キャンセルされました`;
@@ -196,6 +281,7 @@ const { createApp, ref } = Vue;
           } finally {
             loading.value = false;
             currentController = null;
+            // 注意: displayTimerは残りデータの表示が完了するまで継続される場合がある
           }
         }
 
@@ -217,6 +303,7 @@ const { createApp, ref } = Vue;
           loading,
           processingType,
           processingTime,
+          displayConfig,
           getCustomersReactiveBulk,
           getCustomersBlockingBulk,
           clearCustomers,
