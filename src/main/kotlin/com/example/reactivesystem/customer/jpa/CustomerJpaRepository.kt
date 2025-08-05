@@ -1,4 +1,4 @@
-package com.example.reactivesystem.customer
+package com.example.reactivesystem.customer.jpa
 
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.stereotype.Repository
